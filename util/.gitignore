@@ -1,0 +1,5 @@
+util/__pycache__/
+network/__pycache__/
+loader/__pycache__/
+.idea
+documents.txt
