@@ -7,7 +7,9 @@ In "util/configuration.py"
 2. assign saving parameters location
 
 ## Training
+```
 CUDA_VISIBLE_DEVICES=0 python main.py --net densenet121 --experiment_name densenet121_SGD --bs_per_gpu 30
+```
 
 ## Supported network
 1. Desnsenet121 / Densenet201
