@@ -10,7 +10,7 @@ from util.Metric import Metric
 from util.helpers import Progressbar, add_scalar_dict
 from tensorboardX import SummaryWriter
 from torchsampler import ImbalancedDatasetSampler
-from network.vision_model import hardnet, densenet, efficientnet, densenet_201, arc_efficientnet, Resnext, Resnest, my_densenet
+from network.vision_model import hardnet, efficientnet, densenet_201, arc_efficientnet, Resnext, Resnest, my_densenet
 import torch.optim as optim
 from util.sam import SAM
 from util.smooth_crossentropy import smooth_crossentropy
@@ -35,8 +35,6 @@ def parse(args=None):
     parser.add_argument('--epochs', dest='epochs', type=int, default=100, help='# of epochs')
     parser.add_argument('--bs_per_gpu', dest='batch_size_per_gpu', type=int, default=20) # training batch size
     parser.add_argument('--lr', dest='lr', type=float, default=0.02, help='learning rate')
-    parser.add_argument('--thres_int', dest='thres_int', type=float, default=0.5)
-    parser.add_argument('--test_int', dest='test_int', type=float, default=1.0)
     parser.add_argument('--beta1', dest='beta1', type=float, default=0.9)
     parser.add_argument('--beta2', dest='beta2', type=float, default=0.999)
     parser.add_argument('--net', dest='net', default='vgg')
@@ -146,7 +144,6 @@ class Classifier:
 
     def network_map(self, net):
         network_mapping = {
-            'densenet121': densenet,
             'densenet201': densenet_201,
             'efficientnet': efficientnet,
             'hardnet': hardnet,
@@ -225,7 +222,6 @@ if __name__=='__main__':
             label = label.type(torch.float)
 
             acc, f1, each_f1 = classifier.eval_model(img, label, metric_ev)
-            # add_scalar_dict(writer, errD, it+1, 'D')
             it += 1
             progressbar.say(epoch=epoch, acc=acc.item(), f1=f1.item())
 

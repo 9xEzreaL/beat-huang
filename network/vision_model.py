@@ -7,11 +7,9 @@ import pretrainedmodels
 
 
 _all = [
-    'hardnet',
-    'efficientnet',
-    'densenet',
-    'densenet_201',
-    'Resnext'
+    'my_densenet',
+    'resnext',
+    'resnest'
 ]
 
 class Flatten(nn.Module):
@@ -31,16 +29,7 @@ class hardnet(nn.Module):
                 nn.AdaptiveAvgPool2d((1, 1)),
                 Flatten(),
                 nn.Dropout(0.2))
-        if self.use_meta:
-            self.base_f = nn.Sequential(nn.Linear(1280+384, num_classes, bias=True))
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            self.base_f = nn.Sequential(nn.Linear(1280, num_classes, bias=True))
+        self.base_f = nn.Sequential(nn.Linear(1280, num_classes, bias=True))
 
 
     def forward(self, input, meta=None):
@@ -48,14 +37,7 @@ class hardnet(nn.Module):
             input = layer(input)
         output_feature = input
         # output_feature = self.model_f(input)
-        if self.use_meta:
-            meta = meta[:, :2]
-            out_meta = self.meta(meta)
-            output_feature0 = self.base(output_feature)
-            agg_out = torch.cat([output_feature0, out_meta], 1)
-            output = self.base_f(agg_out)
-        else:
-            output = self.base_f(output_feature)
+        output = self.base_f(output_feature)
 
         return output
 
@@ -64,75 +46,28 @@ class efficientnet(nn.Module):
         super(efficientnet, self).__init__()
         self.use_model = use_meta
         self.model = models.efficientnet_b4(pretrained=pretrain)
-        if use_meta:
-            self.model.classifier[1] = nn.Linear(1792+384, num_classes, bias=True)
-            self.avgpool = nn.AdaptiveAvgPool2d(1)
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            self.avgpool = nn.AdaptiveAvgPool2d(1)
-            self.meta = nn.Sequential(
-                nn.Linear(1792, 896),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(896),
-                ResNormLayer(896),
-            )
-            self.model.classifier[1] = nn.Linear(896, num_classes, bias=True)
+        print(self.model)
+
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.meta = nn.Sequential(
+            nn.Linear(1792, 896),
+            nn.ReLU(inplace=True),
+            nn.LayerNorm(896),
+            ResNormLayer(896),
+        )
+        self.model.classifier[1] = nn.Linear(896, num_classes, bias=True)
 
 
     def forward(self, input, meta=None):
-        if meta is not None:
-            meta = meta[:, :2]  # no time
-            output_feature = self.model.features(input)
-            output_feature = self.avgpool(output_feature)
-            output_feature = torch.flatten(output_feature, 1)
-            out_meta = self.meta(meta)
-            agg_out = torch.cat([output_feature, out_meta], 1)
-            output = self.model.classifier(agg_out)
-        else:
-            output_feature = self.model.features(input)
-            output_feature = self.avgpool(output_feature)
-            output_feature = torch.flatten(output_feature, 1)
-            output_feature = self.meta(output_feature)
-            output = self.model.classifier(output_feature)
-            # output = self.model(input)
+        output_feature = self.model.features(input)
+        output_feature = self.avgpool(output_feature)
+        output_feature = torch.flatten(output_feature, 1)
+        output_feature = self.meta(output_feature)
+        output = self.model.classifier(output_feature)
+        # output = self.model(input)
 
         return output
 
-class densenet(nn.Module):
-    def __init__(self, num_classes, use_meta=False, pretrain=True):
-        super(densenet, self).__init__()
-        self.use_meta = use_meta
-        self.model = models.densenet121(pretrained=pretrain)
-        if use_meta:
-            in_features = self.model.classifier.in_features + 384
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            in_features = self.model.classifier.in_features
-        self.model.classifier = nn.Linear(in_features=in_features, out_features=num_classes, bias=True)
-
-    def forward(self, input, meta=None):
-        if self.use_meta:
-            meta = meta[:, :2] # no time
-            output_feature = self.model.features(input)
-            output_feature = F.relu(output_feature, inplace=True)
-            output_feature = F.adaptive_avg_pool2d(output_feature, (1, 1))
-            output_feature = torch.flatten(output_feature, 1)
-            out_meta = self.meta(meta)
-            agg_out = torch.cat([output_feature, out_meta], 1)
-            output = self.model.classifier(agg_out)
-        else:
-            output = self.model(input)
-        return output
 
 class my_densenet(nn.Module):
     def __init__(self, num_classes, use_meta=False, pretrain=False):
@@ -140,12 +75,12 @@ class my_densenet(nn.Module):
         self.model = models.densenet121(pretrained=pretrain)
         self.mp = nn.AdaptiveAvgPool2d((1, 1))
         in_features = self.model.classifier.in_features
-        # self.classifier = nn.Linear(in_features=in_features, out_features=512, bias=True)
         self.mid_layer = nn.Sequential(nn.Linear(in_features=in_features, out_features=512, bias=True),
                                         nn.ReLU(),
                                         nn.Dropout(0.5)
                                         )
         self.classifier = nn.Sequential(nn.Linear(in_features=512, out_features=num_classes, bias=True))
+
 
 
     def forward(self, input, meta=None):
@@ -162,30 +97,11 @@ class densenet_201(nn.Module):
         super(densenet_201, self).__init__()
         self.use_meta = use_meta
         self.model = models.densenet201(pretrained=pretrain)
-        if use_meta:
-            in_features = self.model.classifier.in_features + 384
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            in_features = self.model.classifier.in_features
+        in_features = self.model.classifier.in_features
         self.model.classifier = nn.Linear(in_features=in_features, out_features=num_classes, bias=True)
 
     def forward(self, input, meta=None):
-        if self.use_meta:
-            meta = meta[:, :2] # no time
-            output_feature = self.model.features(input)
-            output_feature = F.relu(output_feature, inplace=True)
-            output_feature = F.adaptive_avg_pool2d(output_feature, (1, 1))
-            output_feature = torch.flatten(output_feature, 1)
-            out_meta = self.meta(meta)
-            agg_out = torch.cat([output_feature, out_meta], 1)
-            output = self.model.classifier(agg_out)
-        else:
-            output = self.model(input)
+        output = self.model(input)
         return output
 
 # not work
@@ -194,17 +110,7 @@ class arc_efficientnet(nn.Module):
         super(arc_efficientnet, self).__init__()
         self.use_model = use_meta
         self.model = models.efficientnet_b4(pretrained=pretrain)
-        if use_meta:
-            self.model.classifier[1] = nn.Linear(1792+384, num_classes, bias=True)
-            self.avgpool = nn.AdaptiveAvgPool2d(1)
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            self.model.classifier[1] = nn.Linear(1792, num_classes, bias=True)
+        self.model.classifier[1] = nn.Linear(1792, num_classes, bias=True)
         self.class_weight = nn.Parameter(torch.rand(num_classes, 1792+384))
         self.logit_scale = nn.Parameter(torch.rand(()))
 
@@ -235,57 +141,28 @@ class arc_efficientnet(nn.Module):
         #                          logits)
         return logits * self.logit_scale.exp()
 
-# not work
-class PNASNet(nn.Module):
-    def __init__(self, num_classes, use_meta=False):
-        super(PNASNet, self).__init__()
-        self.use_meta = use_meta
-        self.model = pretrainedmodels.pnasnet5large(num_classes=1000, pretrained='imagenet')
-        print(self.model)
-        assert 0
-        if use_meta:
-            in_features = self.model.classifier.in_features + 384
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            in_features = self.model.classifier.in_features
-        self.model.classifier = nn.Linear(in_features=in_features, out_features=33, bias=True)
-
 
 class Resnext(nn.Module):
     def __init__(self, num_classes, use_meta=False, pretrain=True):
         super(Resnext, self).__init__()
         self.use_meta = use_meta
         self.model = torch.hub.load('pytorch/vision:v0.10.0', 'resnext50_32x4d', pretrained=pretrain)
-        if use_meta:
-            in_features = 2048 + 384
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            in_features = 2048
-        self.model.fc = nn.Linear(in_features=in_features, out_features=num_classes, bias=True)
+
+        in_features = 2048
+        # self.model.fc = nn.Linear(in_features=in_features, out_features=num_classes, bias=True)
+        self.model.fc = nn.Sequential(  nn.Linear(in_features=in_features, out_features=1024, bias=True),
+                                        nn.ReLU(),
+                                        nn.Dropout(0.5),
+                                        nn.Linear(in_features=1024, out_features=512, bias=True),
+                                        nn.ReLU(),
+                                        nn.Dropout(0.5),
+                                        nn.Linear(in_features=512, out_features=num_classes, bias=True)
+                                        )
+        # print(self.model)
 
 
     def forward(self, input, meta=None):
-        if self.use_meta:
-            meta = meta[:, :2] # no time
-            output_feature = self.model.maxpool(self.model.relu(self.model.bn1(self.model.conv1(input))))
-            output_feature = self.model.layer4(self.model.layer3(self.model.layer2(self.model.layer1(output_feature))))
-            output_feature = self.model.avgpool(output_feature)
-            output_feature = torch.flatten(output_feature, 1)
-            out_meta = self.meta(meta)
-            agg_out = torch.cat([output_feature, out_meta], 1)
-            output = self.model.fc(agg_out)
-        else:
-            output = self.model(input)
+        output = self.model(input)
         return output
 
 
@@ -295,28 +172,17 @@ class Resnest(nn.Module):
         self.use_meta = use_meta
         torch.hub.list('zhanghang1989/ResNeSt', force_reload=True)
         self.model = torch.hub.load('zhanghang1989/ResNeSt', 'resnest50', pretrained=pretrain)
-        if use_meta:
-            in_features = 2048 + 384
-            self.meta = nn.Sequential(
-                nn.Linear(2, 384),
-                nn.ReLU(inplace=True),
-                nn.LayerNorm(384),
-                ResNormLayer(384),
-            )
-        else:
-            in_features = 2048
-        self.model.fc = nn.Linear(in_features=in_features, out_features=num_classes, bias=True)
+        in_features = 2048
+        self.model.fc = nn.Sequential(  nn.Linear(in_features=in_features, out_features=1024, bias=True),
+                                        nn.ReLU(),
+                                        nn.Dropout(0.3),
+                                        nn.Linear(in_features=1024, out_features=512, bias=True),
+                                        nn.ReLU(),
+                                        nn.Dropout(0.3),
+                                        nn.Linear(in_features=512, out_features=num_classes, bias=True)
+                                        )
+        # print(self.model)
 
     def forward(self, input, meta=None):
-        if self.use_meta:
-            meta = meta[:, :2] # no time
-            output_feature = self.model.maxpool(self.model.relu(self.model.bn1(self.model.conv1(input))))
-            output_feature = self.model.layer4(self.model.layer3(self.model.layer2(self.model.layer1(output_feature))))
-            output_feature = self.model.avgpool(output_feature)
-            output_feature = torch.flatten(output_feature, 1)
-            out_meta = self.meta(meta)
-            agg_out = torch.cat([output_feature, out_meta], 1)
-            output = self.model.fc(agg_out)
-        else:
-            output = self.model(input)
+        output = self.model(input)
         return output

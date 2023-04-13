@@ -43,8 +43,8 @@ class BeatDataset(Dataset):
     def transforms(self, mode):
         if mode == 'train':
             transform = A.Compose([
-                A.Resize(width=420, height=420),
-                A.RandomCrop(width=384, height=384),
+                A.Resize(width=296, height=296),
+                A.RandomCrop(width=256, height=256),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
                 A.RandomRotate90(),
@@ -54,14 +54,14 @@ class BeatDataset(Dataset):
                 ])
         else:
             transform = A.Compose([
-                A.Resize(width=420, height=420),
-                A.CenterCrop(width=384, height=384),
+                A.Resize(width=296, height=296),
+                A.CenterCrop(width=256, height=256),
                 ])
         return transform
 
     def __getitem__(self, index):
-        label = label_mapping[self.data_list[index].split('/')[6]]
-        id = self.data_list[index].split('/')[6]
+        label = label_mapping[self.data_list[index].replace('\\', '/').split('/')[-2]]
+        id = self.data_list[index].replace('\\', '/').split('/')[-1]
 
         img = cv2.imread(self.data_list[index])
         transform = self.transforms(self.mode)
@@ -76,7 +76,7 @@ class BeatDataset(Dataset):
         return len(self.data_list)
 
     def get_labels(self):
-        return [label_mapping[x.split('/')[6]] for x in self.data_list]
+        return [label_mapping[x.replace('\\', '/').split('/')[-2]] for x in self.data_list]
 
 
 if __name__ == "__main__":
